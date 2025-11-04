@@ -1,15 +1,15 @@
-TARGET = shell
 CXX = g++
-SRC = "Interactive Shell.cpp"
+TARGET = shell
+SRC = Interactive_Shell.cpp
 OBJ = InteractiveShell.o
 
 all: $(TARGET)
 
 $(TARGET): $(OBJ)
-	$(CXX)  -o $(TARGET) $(OBJ)
+	$(CXX) $(CXXFLAGS) -o $(TARGET) $(OBJ)
 
 $(OBJ): $(SRC)
-	$(CXX)  -c $(SRC) -o $(OBJ)
+	$(CXX) $(CXXFLAGS) -c $(SRC) -o $(OBJ)
 
 clean:
 	rm -f $(OBJ) $(TARGET)
