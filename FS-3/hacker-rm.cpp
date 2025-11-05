@@ -2,51 +2,66 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
+#include <errno.h>
 
 int main(int argc, char** argv) {
     if (argc != 2) {
-        perror("Wrong arguments");
-        exit(EXIT_FAILURE);
+        fprintf(stderr, "Usage: %s <file>\n", argv[0]);
+        return EXIT_FAILURE;
     }
 
-    int fd = open(argv[1], O_RDONLY);
+    const char* path = argv[1];
+
+    int fd = open(path, O_RDWR);
     if (fd == -1) {
         perror("Error opening file");
-        exit(EXIT_FAILURE);
+        return EXIT_FAILURE;
     }
 
     off_t file_size = lseek(fd, 0, SEEK_END);
     if (file_size == -1) {
         perror("Error getting file size");
         close(fd);
-        exit(EXIT_FAILURE);
-    }
-    close(fd);
-
-    fd = open(argv[1], O_WRONLY);
-    if (fd == -1) {
-        perror("Error opening file for writing");
-        exit(EXIT_FAILURE);
+        return EXIT_FAILURE;
     }
 
-    const int BUF_SIZE = 4096;
+    if (lseek(fd, 0, SEEK_SET) == -1) {
+        perror("Error seeking to beginning");
+        close(fd);
+        return EXIT_FAILURE;
+    }
+
+    const size_t BUF_SIZE = 4096;
     char buffer[BUF_SIZE];
-    for (int i = 0; i < BUF_SIZE; i++) {
-        buffer[i] = '\0';
-    }
+    memset(buffer, 0, sizeof(buffer));
 
     off_t remaining = file_size;
     while (remaining > 0) {
-        ssize_t to_write = (remaining > BUF_SIZE) ? BUF_SIZE : remaining;
+        ssize_t to_write = (remaining > (off_t)BUF_SIZE) ? (ssize_t)BUF_SIZE : (ssize_t)remaining;
         ssize_t written = write(fd, buffer, to_write);
         if (written == -1) {
             perror("Error writing to file");
             close(fd);
-            exit(EXIT_FAILURE);
+            return EXIT_FAILURE;
         }
         remaining -= written;
     }
 
-    close(fd);
-    return 0;
+    if (fsync(fd) == -1) {
+        perror("Warning: fsync failed");
+        /* не фатально — продолжаем попытку удалить файл */
+    }
+
+    if (close(fd) == -1) {
+        perror("Error closing file");
+        return EXIT_FAILURE;
+    }
+
+    if (unlink(path) == -1) {
+        perror("Error deleting file");
+        return EXIT_FAILURE;
+    }
+
+    return EXIT_SUCCESS;
 }
