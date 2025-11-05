@@ -5,7 +5,7 @@
 
 int main(int argc, char* argv[]) {
     if (argc != 3) {
-        perror("Wrong arguments");
+        fprintf(stderr, "Usage: %s <source> <destination>\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
@@ -17,6 +17,7 @@ int main(int argc, char* argv[]) {
         perror("Error: Cannot open source file");
         exit(EXIT_FAILURE);
     }
+
     int dst = open(destPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (dst == -1) {
         perror("Error: Cannot open destination file");
