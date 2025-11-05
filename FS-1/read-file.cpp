@@ -5,7 +5,7 @@
 
 int main(int argc, char** argv) {
     if (argc != 2) {
-        perror("Wrong arguments");
+        fprintf(stderr, "Wrong arguments: Expected 1 argument, but got %d\n", argc - 1);
         exit(EXIT_FAILURE);
     }
 
