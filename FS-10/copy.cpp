@@ -43,7 +43,6 @@ int main(int argc, char* argv[]) {
     off_t totalHoleBytes = 0;
 
     while ((readBytes = read(fdSource, buf, BUFFER_SIZE)) > 0) {
-
         if (isHole(buf, readBytes)) {
             if (lseek(fdDest, readBytes, SEEK_CUR) == -1) {
                 std::perror("Seeking error in destination file");
@@ -53,16 +52,19 @@ int main(int argc, char* argv[]) {
             }
             totalHoleBytes += readBytes;
         } else {
-            ssize_t written = write(fdDest, buf, readBytes);
-            if (written != readBytes) {
-                std::perror("Writing error to destination file");
-                close(fdSource);
-                close(fdDest);
-                return EXIT_FAILURE;
+            ssize_t written = 0;
+            while (written < readBytes) {
+                ssize_t result = write(fdDest, buf + written, readBytes - written);
+                if (result == -1) {
+                    std::perror("Writing error to destination file");
+                    close(fdSource);
+                    close(fdDest);
+                    return EXIT_FAILURE;
+                }
+                written += result;
             }
             totalWrittenData += written;
         }
-
         totalRead += readBytes;
     }
 
