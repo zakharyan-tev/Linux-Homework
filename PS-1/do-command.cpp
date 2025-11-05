@@ -18,15 +18,23 @@ void do_command(char* argv[]) {
         execvp(argv[0], argv);
         perror("execvp failed");
         std::exit(1);
-    } else {
+    } else if (pid > 0) {
         int status;
-        wait(&status);
+        pid_t wait_pid = wait(&status);
+
+        if (wait_pid == -1) {
+            perror("wait failed");
+            std::exit(1);
+        }
 
         int exit_code = status >> 8;
         std::time_t end = std::time(nullptr);
 
         std::cout << "Command completed with " << exit_code
                   << " exit code and took " << (end - start) << " seconds.\n";
+    } else {
+        perror("fork failed");
+        std::exit(1);
     }
 }
 
