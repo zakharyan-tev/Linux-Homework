@@ -1,18 +1,13 @@
 CXX = g++
-CXXFLAGS = -O2 -std=c++17 -Wall -Wextra -pthread
+CXXFLAGS = -O2 -Wall -pthread
+
 TARGET = array-summary
-SRC = array-summary.cpp
-
-
-.PHONY: all clean
-
+SRC = main.cpp
 
 all: $(TARGET)
 
-
 $(TARGET): $(SRC)
-$(CXX) $(CXXFLAGS) -o $(TARGET) $(SRC)
-
+	$(CXX) $(CXXFLAGS) -o $(TARGET) $(SRC)
 
 clean:
-rm -f $(TARGET)
+	rm -f $(TARGET)
