@@ -1,5 +1,4 @@
 #include "lib_sch.h"
-#include <iostream>
 
 parallel_scheduler::parallel_scheduler(int threads_num)
     : thread_count(threads_num)
