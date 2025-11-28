@@ -1,5 +1,5 @@
-#ifndef PARALLEL_SCHEDULER_H
-#define PARALLEL_SCHEDULER_H
+#ifndef LIB_SCH_H
+#define LIB_SCH_H
 
 #include <pthread.h>
 #include <functional>
@@ -26,7 +26,7 @@ private:
     pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     pthread_cond_t cond_task = PTHREAD_COND_INITIALIZER;
 
-    static void* thread_entry(void* context);
+    static void* thread_entry(void* ctx);
 };
 
 #endif
