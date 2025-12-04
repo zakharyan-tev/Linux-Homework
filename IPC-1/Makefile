@@ -2,7 +2,7 @@ CXX = g++
 CXXFLAGS = -std=c++17 -Wall
 
 TARGET = signal-echo
-SRC = signal_echo_minimal.cpp
+SRC = signal_echo.cpp
 
 all: $(TARGET)
 
