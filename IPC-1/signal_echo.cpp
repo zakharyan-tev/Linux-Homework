@@ -3,6 +3,7 @@
 #include <pwd.h>
 #include <ucontext.h>
 #include <cstdio>
+#include <cstdlib>
 
 void sigusr1_handler(int, siginfo_t* info, void* ctx) {
     ucontext_t* uc = (ucontext_t*)ctx;
@@ -41,7 +42,11 @@ int main() {
     struct sigaction sa{};
     sa.sa_sigaction = sigusr1_handler;
     sa.sa_flags = SA_SIGINFO;
-    sigaction(SIGUSR1, &sa, nullptr);
+
+    if (sigaction(SIGUSR1, &sa, nullptr) == -1) {
+        perror("sigaction failed");
+        return 1;
+    }
 
     while (1) sleep(10);
 
