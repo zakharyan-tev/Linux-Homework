@@ -1,93 +1,112 @@
 #include <iostream>
 #include <unistd.h>
-#include <sys/types.h>
+#include <fcntl.h>
+#include <vector>
 #include <sys/wait.h>
 #include <cstdlib>
-#include <string>
-#include <sstream>
 
-bool is_prime(int n) {
+bool checkIfPrime(int n) {
     if (n < 2) return false;
-    for (int i = 2; i*i <= n; ++i)
-        if (n % i == 0) return false;
+    if (n == 2 || n == 3) return true;
+    if (n % 2 == 0 || n % 3 == 0) return false;
+    for (int i = 5; i * i <= n; i += 6) {
+        if (n % i == 0 || n % (i + 2) == 0){
+            return false;
+        }
+    }
     return true;
 }
 
-int nth_prime(int n) {
-    int count = 0;
-    int num = 1;
-    while (count < n) {
-        ++num;
-        if (is_prime(num))
-            ++count;
+void addPrimesToArr(int n, std::vector<int> &arr) {
+    for (int i = arr.back() + 1; arr.size() < n; ++i) {
+        if (checkIfPrime(i)) {
+            arr.push_back(i);
+        }
     }
-    return num;
 }
 
 int main() {
-    int pipe_parent_to_child[2];
-    int pipe_child_to_parent[2];
+    int rwPipefd[2];
+    int wrPipefd[2];
 
-    if (pipe(pipe_parent_to_child) == -1 || pipe(pipe_child_to_parent) == -1) {
-        perror("pipe");
-        return 1;
+    if (pipe(rwPipefd) == -1 || pipe(wrPipefd) == -1) {
+        std::cerr << "Failed to create pipes\n";
+        exit(EXIT_FAILURE);
     }
 
-    pid_t pid = fork();
-    if (pid < 0) {
-        perror("fork");
-        return 1;
+    pid_t child = fork();
+
+    if (child == -1) {
+        std::cerr << "Failed to create a child\n";
+        exit(EXIT_FAILURE);
     }
 
-    if (pid == 0) {
-        close(pipe_parent_to_child[1]); 
-        close(pipe_child_to_parent[0]); 
+    if (child == 0) {
+        close(rwPipefd[0]);
+        close(wrPipefd[1]);
+
+        std::vector<int> arr = {2, 3, 5, 7};
 
         while (true) {
-            int m;
-            if (read(pipe_parent_to_child[0], &m, sizeof(m)) <= 0) break;
-            std::cout << "[Child] Calculating " << m << "-th prime number..." << std::endl;
+            char buff[20];
+            int rBytes = read(wrPipefd[0], buff, sizeof(buff) - 1);
 
-            int result = nth_prime(m);
+            if (rBytes <= 0) {
+                break;
+            }
+            
+            buff[rBytes] = '\0';
+            int n = std::atoi(buff);
 
-            std::cout << "[Child] Sending calculation result of prime(" << m << ")..." << std::endl;
-            write(pipe_child_to_parent[1], &result, sizeof(result));
-        }
+            std::cout << "[Child] Calculating " << n << "-th prime number...\n";
 
-        close(pipe_parent_to_child[0]);
-        close(pipe_child_to_parent[1]);
-        exit(0);
-    } else {
-        close(pipe_parent_to_child[0]);
-        close(pipe_child_to_parent[1]); 
-
-        std::string line;
-        while (true) {
-            std::cout << "[Parent] Please enter the number (or 'exit'): ";
-            std::getline(std::cin, line);
-            if (line == "exit") break;
-
-            std::istringstream iss(line);
-            int m;
-            if (!(iss >> m)) {
-                std::cout << "[Parent] Invalid input. Try again." << std::endl;
-                continue;
+            if (n > (int)arr.size()){
+                addPrimesToArr(n, arr);
             }
 
-            std::cout << "[Parent] Sending " << m << " to the child process..." << std::endl;
-            write(pipe_parent_to_child[1], &m, sizeof(m));
+            std::cout << "[Child] Sending calculation result of prime(" << n << ")...\n";
 
-            std::cout << "[Parent] Waiting for the response from the child process..." << std::endl;
-            int result;
-            read(pipe_child_to_parent[0], &result, sizeof(result));
-            std::cout << "[Parent] Received calculation result of prime(" << m << ") = " << result << "..." << std::endl;
+            std::string res = std::to_string(arr[n - 1]);
+
+            write(rwPipefd[1], res.c_str(), res.size());
         }
 
-        close(pipe_parent_to_child[1]);
-        close(pipe_child_to_parent[0]);
+        close(rwPipefd[1]);
+        close(wrPipefd[0]);
+        exit(0);
+    }
 
-        wait(nullptr);
-        std::cout << "[Parent] Exiting." << std::endl;
+    close(rwPipefd[1]);
+    close(wrPipefd[0]);
+
+    while (true) {
+        std::string m;
+        std::cout << "[Parent] Please enter the number: ";
+        std::cin >> m;
+
+        if (m == "exit") {
+            close(wrPipefd[1]);
+            close(rwPipefd[0]);
+            wait(NULL);
+            break;
+        }
+
+        std::cout << "[Parent] Sending " << m << " to the child process...\n";
+        write(wrPipefd[1], m.c_str(), m.size());
+
+        std::cout << "[Parent] Waiting for the response...\n";
+
+        char buff[20];
+        int rBytes = read(rwPipefd[0], buff, sizeof(buff) - 1);
+
+        if (rBytes <= 0) {
+            std::cerr << "[Parent] Child closed pipe unexpectedly.\n";
+            break;
+        }
+
+        buff[rBytes] = '\0';
+        std::cout << "[Parent] Received calculation result of prime(" << m 
+                  << ") = " << buff << "...\n\n";
     }
 
     return 0;
