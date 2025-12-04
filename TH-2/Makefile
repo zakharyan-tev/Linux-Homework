@@ -14,7 +14,7 @@ lib_sch.o: lib_sch.cpp lib_sch.h
 	$(CXX) $(CXXFLAGS) -c lib_sch.cpp
 
 $(DEMO): main.o $(LIB)
-	$(CXX) -o $(DEMO) main.o -L. -lsch -Wl,-rpath,. $(LDFLAGS)
+	$(CXX) -o $(DEMO) main.o -L. -l_sch -Wl,-rpath,. $(LDFLAGS)
 
 main.o: main.cpp lib_sch.h
 	$(CXX) $(CXXFLAGS) -c main.cpp
