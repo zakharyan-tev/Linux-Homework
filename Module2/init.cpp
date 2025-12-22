@@ -16,16 +16,23 @@ int main() {
     const char* name = "/my_shm";
 
     int fd = shm_open(name, O_CREAT | O_RDWR, 0666);
-    ftruncate(fd, sizeof(SharedData));
+    if (fd == -1) {
+        perror("shm_open failed");
+        return 1;
+    }
 
-    SharedData* data = (SharedData*)mmap(
-        nullptr,
-        sizeof(SharedData),
-        PROT_READ | PROT_WRITE,
-        MAP_SHARED,
-        fd,
-        0
-    );
+    if (ftruncate(fd, sizeof(SharedData)) == -1) {
+        perror("ftruncate failed");
+        return 1;
+    }
+
+    SharedData* data = (SharedData*)mmap(nullptr, sizeof(SharedData),
+                                         PROT_READ | PROT_WRITE,
+                                         MAP_SHARED, fd, 0);
+    if (data == MAP_FAILED) {
+        perror("mmap failed");
+        return 1;
+    }
 
     pthread_mutexattr_t m_attr;
     pthread_condattr_t c_attr;
@@ -42,9 +49,10 @@ int main() {
     data->ready = false;
     std::memset(data->message, 0, sizeof(data->message));
 
-    std::cout << "Shared memory initialized\n";
+    std::cout << "Shared memory initialized. Keep this process running!\n";
+    std::cout << "Press Ctrl+C to exit after testing writer/reader.\n";
 
-    sleep(10);
+    while(true) sleep(1);
 
     pthread_mutex_destroy(&data->mutex);
     pthread_cond_destroy(&data->cond);
