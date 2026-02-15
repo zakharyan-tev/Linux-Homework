@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Socket.hpp"
+#include "ThreadPool.hpp"
 #include <functional>
 
 namespace SimpleNet {
@@ -13,6 +14,7 @@ public:
 
 private:
     Socket listen_socket_;
+    ThreadPool pool_;
 };
 
 }
