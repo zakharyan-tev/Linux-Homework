@@ -20,6 +20,7 @@ public:
 
     void bind(int port);
     void listen(int backlog = 10);
+    void connect(const std::string& ip, int port);
 
     Socket accept();
 
