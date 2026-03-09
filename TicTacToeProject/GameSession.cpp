@@ -1,145 +1,157 @@
 #include "GameSession.h"
 #include "Protocol.h"
-#include <unistd.h>
+
 #include <sys/socket.h>
+#include <unistd.h>
 #include <iostream>
 #include <cstring>
 #include <errno.h>
 
-bool GameSession::addPlayer(int playerFd) {
-    std::lock_guard<std::mutex> lock(stateMutex);
+GameSession::GameSession(int id)
+{
+    sessionId   = id;
+    for (int i = 0; i < 9; i++) board[i] = '.';
+    playerX     = -1;
+    playerO     = -1;
+    currentTurn = 'X';
+    gameOver    = false;
+}
 
-    if (state.playerX_id == -1) {
-        state.playerX_id = playerFd;
-        sendToPlayer(playerFd, Protocol::buildWelcome('X', sessionId));
-        sendToPlayer(playerFd, "WAITING Waiting for opponent...\n");
+bool GameSession::addPlayer(int fd)
+{
+    std::lock_guard<std::mutex> lock(mtx);
+
+    if (playerX == -1)
+    {
+        playerX = fd;
+        sendToPlayer(fd, "WELCOME X " + std::to_string(sessionId) + "\n");
+        sendToPlayer(fd, "WAITING\n");
         return true;
     }
 
-    if (state.playerO_id == -1) {
-        state.playerO_id = playerFd;
+    if (playerO == -1)
+    {
+        playerO = fd;
+        sendToPlayer(fd, "WELCOME O " + std::to_string(sessionId) + "\n");
 
-        sendToPlayer(playerFd, Protocol::buildWelcome('O', sessionId));
-
-        state.status = GameStatus::IN_PROGRESS;
-
-        sendToPlayer(state.playerX_id, "GAME_START It's your turn (X)!\n");
-        sendToPlayer(state.playerO_id, "GAME_START Opponent goes first (X)!\n");
-
-        std::string stateMsg = GameLogic::serializeState(state);
-
-        sendToPlayer(state.playerX_id, stateMsg);
-        sendToPlayer(state.playerO_id, stateMsg);
-
+        sendToPlayer(playerX, "GAME_START Your turn\n");
+        sendToPlayer(playerO, "GAME_START Opponent goes first\n");
+        broadcastState();
         return true;
     }
 
     return false;
 }
 
-bool GameSession::handleMove(int playerFd, int position) {
-    std::lock_guard<std::mutex> lock(stateMutex);
+bool GameSession::handleMove(int fd, int pos)
+{
+    std::lock_guard<std::mutex> lock(mtx);
 
-    if (!GameLogic::makeMove(state, playerFd, position)) {
-        sendToPlayer(playerFd, "MOVE_ERR Invalid move\n");
+    if (gameOver) return false;
+
+    char symbol;
+    if      (fd == playerX) symbol = 'X';
+    else if (fd == playerO) symbol = 'O';
+    else return false;
+
+    if (symbol != currentTurn)
+    {
+        sendToPlayer(fd, "MOVE_ERR Not your turn\n");
         return false;
     }
 
-    sendToPlayer(playerFd, "MOVE_OK " + std::to_string(position) + "\n");
+    if (pos < 0 || pos > 8 || board[pos] != '.')
+    {
+        sendToPlayer(fd, "MOVE_ERR Invalid cell\n");
+        return false;
+    }
+
+    board[pos] = symbol;
+    currentTurn = (currentTurn == 'X') ? 'O' : 'X';
+
+    sendToPlayer(fd, "MOVE_OK " + std::to_string(pos) + "\n");
+
+    if (checkWin(symbol))
+    {
+        gameOver = true;
+        std::string status = (symbol == 'X') ? "X_WINS" : "O_WINS";
+        broadcastStateWithStatus(status);
+        std::string resultMsg = "RESULT " + std::string(1, symbol) + " wins\n";
+        sendToPlayer(playerX, resultMsg);
+        sendToPlayer(playerO, resultMsg);
+        return true;
+    }
+
+    if (boardFull())
+    {
+        gameOver = true;
+        broadcastStateWithStatus("DRAW");
+        sendToPlayer(playerX, "RESULT DRAW\n");
+        sendToPlayer(playerO, "RESULT DRAW\n");
+        return true;
+    }
 
     broadcastState();
-
     return true;
 }
 
-void GameSession::broadcastState() const {
-    std::string stateMsg = GameLogic::serializeState(state);
 
-    if (state.playerX_id != -1)
-        sendToPlayer(state.playerX_id, stateMsg);
-
-    if (state.playerO_id != -1)
-        sendToPlayer(state.playerO_id, stateMsg);
-
-    if (state.status != GameStatus::IN_PROGRESS &&
-        state.status != GameStatus::WAITING)
-    {
-        std::string resultMsg;
-
-        switch (state.status) {
-            case GameStatus::X_WINS:
-                resultMsg = "RESULT X wins! Game over.\n";
-                break;
-            case GameStatus::O_WINS:
-                resultMsg = "RESULT O wins! Game over.\n";
-                break;
-            case GameStatus::DRAW:
-                resultMsg = "RESULT Draw! Game over.\n";
-                break;
-            default:
-                break;
-        }
-
-        if (!resultMsg.empty()) {
-            if (state.playerX_id != -1)
-                sendToPlayer(state.playerX_id, resultMsg);
-
-            if (state.playerO_id != -1)
-                sendToPlayer(state.playerO_id, resultMsg);
-        }
-    }
+std::string GameSession::buildStateMsg(const std::string& status) const
+{
+    std::string b(board, 9);
+    std::string turn(1, currentTurn);
+    return Protocol::buildState(b, currentTurn, status);
 }
 
-void GameSession::sendToPlayer(int fd, const std::string& msg) {
+void GameSession::broadcastState()
+{
+    std::string msg = buildStateMsg("IN_PROGRESS");
+    if (playerX != -1) sendToPlayer(playerX, msg);
+    if (playerO != -1) sendToPlayer(playerO, msg);
+}
 
+void GameSession::broadcastStateWithStatus(const std::string& status)
+{
+    std::string msg = buildStateMsg(status);
+    if (playerX != -1) sendToPlayer(playerX, msg);
+    if (playerO != -1) sendToPlayer(playerO, msg);
+}
+
+bool GameSession::checkWin(char s)
+{
+    int w[8][3] = {
+        {0,1,2},{3,4,5},{6,7,8},
+        {0,3,6},{1,4,7},{2,5,8},
+        {0,4,8},{2,4,6}
+    };
+    for (auto& a : w)
+        if (board[a[0]] == s && board[a[1]] == s && board[a[2]] == s)
+            return true;
+    return false;
+}
+
+bool GameSession::boardFull()
+{
+    for (int i = 0; i < 9; i++)
+        if (board[i] == '.') return false;
+    return true;
+}
+
+void GameSession::sendToPlayer(int fd, const std::string& msg)
+{
     if (fd < 0) return;
-
-    size_t total = 0;
-    size_t len = msg.size();
-
-    while (total < len) {
-
-        ssize_t sent = send(
-            fd,
-            msg.c_str() + total,
-            len - total,
-            MSG_NOSIGNAL
-        );
-
-        if (sent <= 0) {
-            std::cerr << "[Session] send error fd="
-                      << fd << " : "
-                      << strerror(errno)
-                      << "\n";
-            return;
-        }
-
+    size_t total = 0, len = msg.size();
+    while (total < len)
+    {
+        ssize_t sent = send(fd, msg.c_str() + total, len - total, MSG_NOSIGNAL);
+        if (sent <= 0) { std::cerr << "send error " << strerror(errno) << "\n"; return; }
         total += sent;
     }
 }
 
-bool GameSession::isFull() const {
-    std::lock_guard<std::mutex> lock(stateMutex);
-    return state.playerX_id != -1 && state.playerO_id != -1;
-}
-
-bool GameSession::isOver() const {
-    std::lock_guard<std::mutex> lock(stateMutex);
-
-    return state.status == GameStatus::X_WINS ||
-           state.status == GameStatus::O_WINS ||
-           state.status == GameStatus::DRAW;
-}
-
-int GameSession::getOpponent(int playerFd) const {
-
-    std::lock_guard<std::mutex> lock(stateMutex);
-
-    if (state.playerX_id == playerFd)
-        return state.playerO_id;
-
-    if (state.playerO_id == playerFd)
-        return state.playerX_id;
-
+int GameSession::getOpponent(int fd) const
+{
+    if (fd == playerX) return playerO;
+    if (fd == playerO) return playerX;
     return -1;
 }
