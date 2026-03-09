@@ -1,35 +1,24 @@
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -Iinclude
+CXXFLAGS = -std=c++17 -Wall -Wextra -O2
 LDFLAGS = -pthread
 
-SRC_DIR = .
-INC_DIR = .
+SERVER_SRCS = server_main.cpp \
+              Server.cpp \
+              GameSession.cpp \
+              GameLogic.cpp \
+              Protocol.cpp
 
-SERVER_SRCS = $(SRC_DIR)/server_main.cpp \
-              $(SRC_DIR)/Server.cpp \
-              $(SRC_DIR)/GameSession.cpp \
-              $(SRC_DIR)/GameLogic.cpp \
-              $(SRC_DIR)/Protocol.cpp
-
-CLIENT_SRCS = $(SRC_DIR)/client_main.cpp
+CLIENT_SRCS = client_main.cpp
 
 SERVER_BIN = tictactoe_server
 CLIENT_BIN = tictactoe_client
 
-.PHONY: all clean server client
-
 all: server client
-	@echo ""
-	@echo "✅ Build complete!"
-	@echo "   Start server:  ./$(SERVER_BIN) [port]"
-	@echo "   Start client:  ./$(CLIENT_BIN) [host] [port]"
 
-server: $(SERVER_SRCS)
-	@echo "Building server..."
+server:
 	$(CXX) $(CXXFLAGS) -o $(SERVER_BIN) $(SERVER_SRCS) $(LDFLAGS)
 
-client: $(CLIENT_SRCS)
-	@echo "Building client..."
+client:
 	$(CXX) $(CXXFLAGS) -o $(CLIENT_BIN) $(CLIENT_SRCS) $(LDFLAGS)
 
 clean:
