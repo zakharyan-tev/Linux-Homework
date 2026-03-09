@@ -2,8 +2,8 @@ CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -Iinclude
 LDFLAGS = -lpthread
 
-SRC_DIR = src
-INC_DIR = include
+SRC_DIR = .
+INC_DIR = .
 
 SERVER_SRCS = $(SRC_DIR)/server_main.cpp \
               $(SRC_DIR)/Server.cpp \
