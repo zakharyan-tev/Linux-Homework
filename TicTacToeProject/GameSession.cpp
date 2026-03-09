@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <iostream>
 #include <cstring>
+#include <errno.h>
 
 bool GameSession::addPlayer(int playerFd) {
     std::lock_guard<std::mutex> lock(stateMutex);
