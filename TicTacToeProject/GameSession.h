@@ -1,31 +1,35 @@
 #pragma once
-#include "GameLogic.h"
-#include <mutex>
-#include <atomic>
-#include <string>
 
-class GameSession {
+#include <string>
+#include <mutex>
+
+class GameSession
+{
 public:
     int sessionId;
-    GameState state;
-    mutable std::mutex stateMutex;
-    std::atomic<bool> active{true};
 
-    explicit GameSession(int id) : sessionId(id) {}
+    GameSession(int id);
 
-    // Returns true if player successfully joined
-    bool addPlayer(int playerFd);
+    bool addPlayer(int fd);
+    bool handleMove(int fd, int pos);
+    int  getOpponent(int fd) const;
 
-    // Returns true if move was valid and applied
-    bool handleMove(int playerFd, int position);
-
-    // Broadcast current state to both players
-    void broadcastState() const;
-
-    // Send message to a specific player
     static void sendToPlayer(int fd, const std::string& msg);
 
-    bool isFull() const;
-    bool isOver() const;
-    int getOpponent(int playerFd) const;
+private:
+    void broadcastState();
+    void broadcastStateWithStatus(const std::string& status);
+    std::string buildStateMsg(const std::string& status) const;
+
+    bool checkWin(char symbol);
+    bool boardFull();
+
+private:
+    int  playerX;
+    int  playerO;
+    char board[9];
+    char currentTurn;
+    bool gameOver;
+
+    mutable std::mutex mtx;
 };
