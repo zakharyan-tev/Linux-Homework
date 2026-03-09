@@ -1,6 +1,6 @@
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -Iinclude
-LDFLAGS = -lpthread
+LDFLAGS = -pthread
 
 SRC_DIR = .
 INC_DIR = .
