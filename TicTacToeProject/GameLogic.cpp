@@ -7,7 +7,6 @@ bool GameLogic::makeMove(GameState& state, int playerFd, int position) {
     if (position < 0 || position > 8) return false;
     if (state.board[position] != Cell::EMPTY) return false;
 
-    // Check it's the right player's turn
     bool isX = (state.currentTurn == Cell::X && state.playerX_id == playerFd);
     bool isO = (state.currentTurn == Cell::O && state.playerO_id == playerFd);
     if (!isX && !isO) return false;
@@ -24,7 +23,7 @@ bool GameLogic::makeMove(GameState& state, int playerFd, int position) {
 
 GameStatus GameLogic::checkWinner(const GameState& state) {
     const auto& b = state.board;
-    // All winning combinations
+    
     const int wins[8][3] = {
         {0,1,2},{3,4,5},{6,7,8}, // rows
         {0,3,6},{1,4,7},{2,5,8}, // cols
