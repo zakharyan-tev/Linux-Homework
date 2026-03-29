@@ -3,17 +3,17 @@
 
 // Protocol: All messages are newline-terminated strings
 // Client -> Server:
-//   MOVE <position>       (position 0-8)
+//   MOVE <position> (position 0-8)
 //   QUIT
 //
 // Server -> Client:
 //   WELCOME <symbol> <session_id>
-//   STATE <board> <turn> <status>   (board = 9 chars: X/O/.)
+//   STATE <board> <turn> <status> (board = 9 chars: X/O/.)
 //   MOVE_OK <position>
 //   MOVE_ERR <reason>
 //   WAITING
 //   OPPONENT_DISCONNECTED
-//   BOARD                 (pretty-printed board follows)
+//   BOARD (pretty-printed board follows)
 
 namespace Protocol {
     const std::string WELCOME    = "WELCOME";
