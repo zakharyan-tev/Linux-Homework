@@ -4,18 +4,66 @@
 #include <mutex>
 #include <map>
 #include <set>
+#include <queue>
+#include <functional>
+#include <condition_variable>
 #include <algorithm>
 #include <sstream>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <cstring>
 
-//  Encode / Decode  (length-prefix: "4#len#data")
+class ThreadPool {
+public:
+    explicit ThreadPool(size_t num_threads) {
+        for (size_t i = 0; i < num_threads; ++i) {
+            workers.emplace_back([this] {
+                while (true) {
+                    std::function<void()> task;
+                    {
+                        std::unique_lock<std::mutex> lock(queue_mutex);
+                        cv.wait(lock, [this] {
+                            return stop || !tasks.empty();
+                        });
+                        if (stop && tasks.empty()) return;
+                        task = std::move(tasks.front());
+                        tasks.pop();
+                    }
+                    task();
+                }
+            });
+        }
+    }
+
+    void enqueue(std::function<void()> task) {
+        {
+            std::lock_guard<std::mutex> lock(queue_mutex);
+            tasks.push(std::move(task));
+        }
+        cv.notify_one();
+    }
+
+    ~ThreadPool() {
+        {
+            std::lock_guard<std::mutex> lock(queue_mutex);
+            stop = true;
+        }
+        cv.notify_all();
+        for (auto& t : workers) t.join();
+    }
+
+private:
+    std::vector<std::thread> workers;
+    std::queue<std::function<void()>> tasks;
+    std::mutex queue_mutex;
+    std::condition_variable cv;
+    bool stop = false;
+};
+
 std::string encode(const std::vector<std::string>& parts) {
     std::string out;
-    for (const auto& s : parts) {
+    for (const auto& s : parts)
         out += std::to_string(s.size()) + "#" + s;
-    }
     return out;
 }
 
@@ -25,7 +73,7 @@ std::vector<std::string> decode(const std::string& raw, size_t& consumed) {
     while (pos < raw.size()) {
         size_t hash = raw.find('#', pos);
         if (hash == std::string::npos) break;
-        size_t len = std::stoul(raw.substr(pos, hash - pos));
+        size_t len   = std::stoul(raw.substr(pos, hash - pos));
         size_t start = hash + 1;
         if (start + len > raw.size()) break;
         result.push_back(raw.substr(start, len));
@@ -62,9 +110,8 @@ void send_to_room(const std::string& room_name, const std::string& msg,
                   int exclude_sock = -1) {
     auto it = rooms.find(room_name);
     if (it == rooms.end()) return;
-    for (int s : it->second.member_socks) {
+    for (int s : it->second.member_socks)
         if (s != exclude_sock) send_raw(s, msg);
-    }
 }
 
 void leave_room(int sock) {
@@ -72,9 +119,8 @@ void leave_room(int sock) {
     if (c.room.empty()) return;
     auto& r = rooms[c.room];
     r.member_socks.erase(sock);
-    if (r.member_socks.empty()) {
-       rooms.erase(c.room);
-    }
+    if (r.member_socks.empty())
+        rooms.erase(c.room);
     std::string msg = "[" + c.room + "] " + c.name + " left the room.";
     send_to_room(c.room, msg, sock);
     std::cout << msg << "\n";
@@ -159,13 +205,12 @@ void handle_command(int sock, const std::string& line) {
         ss >> target;
         std::string text;
         std::getline(ss, text);
-        if (text.size() && text[0] == ' ') text = text.substr(1);
+        if (!text.empty() && text[0] == ' ') text = text.substr(1);
         if (target.empty() || text.empty()) { send_raw(sock, "Usage: /pm <name> <message>"); return; }
         for (auto& kv : clients) {
-            Client& cl = kv.second;
-            if (cl.name == target) {
+            if (kv.second.name == target) {
                 send_raw(kv.first, "[PM from " + c.name + "] " + text);
-                send_raw(sock, "[PM to " + target + "] " + text);
+                send_raw(sock,     "[PM to "   + target  + "] " + text);
                 return;
             }
         }
@@ -177,7 +222,8 @@ void handle_command(int sock, const std::string& line) {
         std::string out = "=== Online ===\n";
         for (auto& kv : clients) {
             const Client& cl = kv.second;
-            out += "  " + cl.name + (cl.room.empty() ? " (lobby)" : " [" + cl.room + "]") + "\n";
+            out += "  " + cl.name +
+                   (cl.room.empty() ? " (lobby)" : " [" + cl.room + "]") + "\n";
         }
         send_raw(sock, out);
         return;
@@ -186,13 +232,13 @@ void handle_command(int sock, const std::string& line) {
     if (cmd == "/help") {
         send_raw(sock,
             "Commands:\n"
-            "  /rooms                   – list all rooms\n"
-            "  /who                     – list online users\n"
-            "  /create <n> [private <code>]  – create a room\n"
-            "  /join <n> [code]         – join a room\n"
-            "  /leave                   – leave current room\n"
-            "  /pm <name> <msg>         – private message\n"
-            "  /help                    – this help\n"
+            "  /rooms – list all rooms\n"
+            "  /who – list online users\n"
+            "  /create <n> [private <code>] – create a room\n"
+            "  /join <n> [code] – join a room\n"
+            "  /leave – leave current room\n"
+            "  /pm <name> <msg> – private message\n"
+            "  /help – this help\n"
         );
         return;
     }
@@ -227,30 +273,29 @@ void handle_client(int sock) {
         int n = recv(sock, buf, sizeof(buf), 0);
         if (n <= 0) break;
 
-        {
-            std::lock_guard<std::mutex> lock(global_mutex);
-            clients[sock].recv_buf += std::string(buf, n);
-            size_t consumed = 0;
-            auto parts = decode(clients[sock].recv_buf, consumed);
-            clients[sock].recv_buf = clients[sock].recv_buf.substr(consumed);
+        std::lock_guard<std::mutex> lock(global_mutex);
+        clients[sock].recv_buf += std::string(buf, n);
+        size_t consumed = 0;
+        auto parts = decode(clients[sock].recv_buf, consumed);
+        clients[sock].recv_buf = clients[sock].recv_buf.substr(consumed);
 
-            for (const auto& line : parts) {
-                if (!line.empty() && line[0] == '/') {
-                    handle_command(sock, line);
+        for (const auto& line : parts) {
+            if (!line.empty() && line[0] == '/') {
+                handle_command(sock, line);
+            } else {
+                const std::string cur_room = clients[sock].room;
+                const std::string cur_name = clients[sock].name;
+                if (cur_room.empty()) {
+                    send_raw(sock, "You are not in a room. Use /join <room> or /create <room>.");
                 } else {
-                    const std::string cur_room = clients[sock].room;
-                    const std::string cur_name = clients[sock].name;
-                    if (cur_room.empty()) {
-                        send_raw(sock, "You are not in a room. Use /join <room> or /create <room>.");
-                    } else {
-                        std::string full = "[" + cur_room + "] " + cur_name + ": " + line;
-                        std::cout << full << "\n";
-                        send_to_room(cur_room, full, sock);
-                    }
+                    std::string full = "[" + cur_room + "] " + cur_name + ": " + line;
+                    std::cout << full << "\n";
+                    send_to_room(cur_room, full, sock);
                 }
             }
-         }
-      }
+        }
+    }
+
     {
         std::lock_guard<std::mutex> lock(global_mutex);
         std::string name = clients[sock].name;
@@ -267,8 +312,8 @@ int main() {
     setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
     sockaddr_in addr{};
-    addr.sin_family      = AF_INET;
-    addr.sin_port        = htons(12345);
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(12345);
     addr.sin_addr.s_addr = INADDR_ANY;
 
     bind(server_sock, (sockaddr*)&addr, sizeof(addr));
@@ -276,13 +321,13 @@ int main() {
 
     std::cout << "Chat server running on :12345\n";
 
+    ThreadPool pool(8);
+
     while (true) {
         int client_sock = accept(server_sock, nullptr, nullptr);
         if (client_sock < 0) continue;
-        std::thread(handle_client, client_sock).detach();
+        pool.enqueue([client_sock] { handle_client(client_sock); });
     }
 
     close(server_sock);
 }
-
-
